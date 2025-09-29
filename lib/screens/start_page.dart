@@ -4,13 +4,15 @@ import '../app/constants.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/logo_widget.dart';
+import 'homepage.dart';
 
 class StartPage extends StatelessWidget {
   const StartPage({Key? key}) : super(key: key);
   
-  void _onStartPressed() {
-    // Handle start button press
-    print('Start button pressed!');
+  void _onStartPressed(BuildContext context) {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const HomePage()),
+    );
   }
   
   @override
@@ -152,7 +154,7 @@ class StartPage extends StatelessWidget {
                     // Start Button
                     GradientButton(
                       text: AppConstants.startButtonText,
-                      onPressed: _onStartPressed,
+                      onPressed: () => _onStartPressed(context),
                     ),
                     
                     const Spacer(),
