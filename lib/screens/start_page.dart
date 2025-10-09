@@ -45,7 +45,8 @@ class StartPage extends StatelessWidget {
               
               Padding(
                 padding: const EdgeInsets.all(24.0),
-                child: Column(
+                child: SingleChildScrollView(
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     const SizedBox(height: 40),
@@ -157,7 +158,7 @@ class StartPage extends StatelessWidget {
                       onPressed: () => _onStartPressed(context),
                     ),
                     
-                    const Spacer(),
+                    const SizedBox(height: 20),
                     
                     // Footer text
                     const Text(
@@ -171,6 +172,7 @@ class StartPage extends StatelessWidget {
                     
                     const SizedBox(height: 20),
                   ],
+                  ),
                 ),
               ),
             ],
