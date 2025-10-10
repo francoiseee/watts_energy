@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../app/app_theme.dart';
+import '../app/responsive.dart';
 import '../services/csv_loader.dart';
 import '../services/ml_service.dart';
 import '../services/data_repository.dart';
@@ -21,11 +22,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   List<PowerDataPoint> _data = [];
   List<PowerDataPoint> _forecast = [];
   LinearRegressionModel? _model;
+  List<double> _historyX = [];
   String? _error;
   bool _loading = false;
   int _years = 1; // forecast horizon in years
   Duration _step = const Duration(days: 1); // default daily step
   bool _usePersistent = false; // include stored training data
+  bool _seasonal = true; // seasonal adjustment toggle
 
   @override
   void initState() {
@@ -88,17 +91,26 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
           : 0;
       final clampedSteps = steps.clamp(1, 365 * 24 * 5);
-      final preds = MLService.forecastSeasonal(
-        model,
-        merged,
-        clampedSteps,
-        _step,
-      );
+      final preds = _seasonal
+          ? MLService.forecastSeasonal(
+              model,
+              merged,
+              clampedSteps,
+              _step,
+            )
+          : MLService.forecast(
+              model,
+              merged.last.timestamp,
+              trained.historyX,
+              clampedSteps,
+              _step,
+            );
 
       setState(() {
         _data = merged;
         _forecast = preds;
         _model = model;
+        _historyX = trained.historyX;
         _tabController.animateTo(1);
       });
       if (mounted) {
@@ -171,17 +183,26 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
           : 0;
       final clampedSteps = steps.clamp(1, 365 * 24 * 5);
-      final preds = MLService.forecastSeasonal(
-        trained.model,
-        merged,
-        clampedSteps,
-        _step,
-      );
+      final preds = _seasonal
+          ? MLService.forecastSeasonal(
+              trained.model,
+              merged,
+              clampedSteps,
+              _step,
+            )
+          : MLService.forecast(
+              trained.model,
+              merged.last.timestamp,
+              trained.historyX,
+              clampedSteps,
+              _step,
+            );
 
       setState(() {
         _data = merged;
         _forecast = preds;
         _model = trained.model;
+        _historyX = trained.historyX;
         _tabController.animateTo(1);
       });
       if (mounted) {
@@ -220,16 +241,25 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
           : 0;
       final clampedSteps = steps.clamp(1, 365 * 24 * 5);
-      final preds = MLService.forecastSeasonal(
-        trained.model,
-        datasets,
-        clampedSteps,
-        _step,
-      );
+      final preds = _seasonal
+          ? MLService.forecastSeasonal(
+              trained.model,
+              datasets,
+              clampedSteps,
+              _step,
+            )
+          : MLService.forecast(
+              trained.model,
+              datasets.last.timestamp,
+              trained.historyX,
+              clampedSteps,
+              _step,
+            );
       setState(() {
         _data = datasets;
         _forecast = preds;
         _model = trained.model;
+        _historyX = trained.historyX;
         _tabController.animateTo(1);
       });
       if (mounted) {
@@ -261,10 +291,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           children: [
             Image.asset(
               'assets/logo.png',
-              height: 32,
-              width: 32,
+              height: Responsive.s(context, 28),
+              width: Responsive.s(context, 28),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: Responsive.s(context, 8)),
             RichText(
               text: TextSpan(
                 style: const TextStyle(
@@ -344,15 +374,18 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   Widget _buildMyEnergyTab() {
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: EdgeInsets.all(Responsive.s(context, 14)),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: Responsive.s(context, 10),
+            runSpacing: Responsive.s(context, 8),
             children: [
               Text('Forecast horizon:', style: AppTheme.bodyTextStyle),
-              const SizedBox(width: 8),
+              SizedBox(width: Responsive.s(context, 6)),
               DropdownButton<int>(
                 value: _years,
                 items: const [1, 2, 3, 5]
@@ -364,9 +397,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   if (_selectedFilePath != null) _loadAndTrainPath(_selectedFilePath!);
                 },
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: Responsive.s(context, 12)),
               Text('Step:', style: AppTheme.bodyTextStyle),
-              const SizedBox(width: 8),
+              SizedBox(width: Responsive.s(context, 6)),
               DropdownButton<Duration>(
                 value: _step,
                 items: const [
@@ -375,22 +408,59 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   Duration(hours: 6),
                   Duration(hours: 1),
                 ]
-                    .map((d) => DropdownMenuItem(
-                          value: d,
-                          child: Text(d.inDays >= 1
-                              ? '${d.inDays} day${d.inDays>1?'s':''}'
-                              : '${d.inHours} hr'),
-                        ))
+                    .map(
+                      (d) => DropdownMenuItem(
+                        value: d,
+                        child: Text(
+                          d.inDays >= 1
+                              ? '${d.inDays} day${d.inDays > 1 ? 's' : ''}'
+                              : '${d.inHours} hr',
+                        ),
+                      ),
+                    )
                     .toList(),
                 onChanged: (v) {
                   if (v == null) return;
                   setState(() => _step = v);
-                  if (_selectedFilePath != null) _loadAndTrainPath(_selectedFilePath!);
+                  if (_data.isNotEmpty && _model?.isTrained == true) {
+                    final totalDays = 365 * _years;
+                    final steps = (_step.inSeconds > 0)
+                        ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
+                        : 0;
+                    final clampedSteps = steps.clamp(1, 365 * 24 * 5);
+                    final preds = _seasonal
+                        ? MLService.forecastSeasonal(_model!, _data, clampedSteps, _step)
+                        : MLService.forecast(_model!, _data.last.timestamp, _historyX, clampedSteps, _step);
+                    setState(() => _forecast = preds);
+                  }
                 },
               ),
-              const SizedBox(width: 16),
               Row(
                 mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Seasonal', style: AppTheme.bodyTextStyle),
+                  Switch(
+                    value: _seasonal,
+                    onChanged: (v) async {
+                      setState(() => _seasonal = v);
+                      if (_data.isNotEmpty) {
+                        final totalDays = 365 * _years;
+                        final steps = (_step.inSeconds > 0)
+                            ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
+                            : 0;
+                        final clampedSteps = steps.clamp(1, 365 * 24 * 5);
+                        final preds = _seasonal
+                            ? MLService.forecastSeasonal(_model!, _data, clampedSteps, _step)
+                            : MLService.forecast(_model!, _data.last.timestamp, _historyX, clampedSteps, _step);
+                        setState(() => _forecast = preds);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Switch(
                     value: _usePersistent,
@@ -409,12 +479,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: Responsive.s(context, 12)),
           GestureDetector(
             onTap: _pickFile,
             child: Container(
               width: double.infinity,
-              height: 200,
+              height: Responsive.hp(context, 22),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.25),
                 border: Border.all(color: Colors.black, width: 2),
@@ -424,11 +494,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             ),
           ),
 
-          const SizedBox(height: 20),
+          SizedBox(height: Responsive.s(context, 14)),
 
           if (!kIsWeb && _selectedFilePath != null)
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: EdgeInsets.all(Responsive.s(context, 10)),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
@@ -436,7 +506,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               child: Row(
                 children: [
                   const Icon(Icons.insert_drive_file, color: Colors.black),
-                  const SizedBox(width: 8),
+                  SizedBox(width: Responsive.s(context, 6)),
                   Expanded(
                     child: Text(
                       _selectedFilePath!.split(RegExp(r'[\\/]')).last,
@@ -462,7 +532,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
           if (kIsWeb && _selectedWebFile != null)
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: EdgeInsets.all(Responsive.s(context, 10)),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
@@ -470,7 +540,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               child: Row(
                 children: [
                   const Icon(Icons.insert_drive_file, color: Colors.black),
-                  const SizedBox(width: 8),
+                  SizedBox(width: Responsive.s(context, 6)),
                   Expanded(
                     child: Text(
                       _selectedWebFile!.name,
@@ -568,15 +638,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
 
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: EdgeInsets.all(Responsive.s(context, 14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             'Power consumption (history + ${_years}y forecast, step ${_step.inDays>=1 ? "${_step.inDays}d" : "${_step.inHours}h"})',
-            style: AppTheme.titleTextStyle.copyWith(fontSize: 20),
+            style: AppTheme.titleTextStyle.copyWith(fontSize: Responsive.sp(context, 18)),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: Responsive.s(context, 10)),
           Expanded(
             child: LineChart(
               LineChartData(
@@ -659,10 +729,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: Responsive.s(context, 8)),
           Wrap(
-            spacing: 16,
-            runSpacing: 8,
+            spacing: Responsive.s(context, 12),
+            runSpacing: Responsive.s(context, 6),
             crossAxisAlignment: WrapCrossAlignment.center,
             children: const [
               _LegendItem(label: 'History', color: Colors.black, dashed: false),
@@ -671,6 +741,92 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               _LegendItem(label: 'Trend', color: Colors.orange, dashed: true),
             ],
           ),
+          SizedBox(height: Responsive.s(context, 10)),
+          if (_model?.isTrained == true)
+            _buildInterpretation(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInterpretation(BuildContext context) {
+    // Slope-based daily change (from linear regression)
+    final b = _model!.b ?? 0.0; // units per second
+    final slopePerDay = b * 86400.0;
+    final direction = slopePerDay.abs() < 1e-6
+        ? 'stable'
+        : (slopePerDay > 0 ? 'increasing' : 'decreasing');
+    final r2 = _model!.rSquared ?? 0.0;
+
+    // Projected change vs recent baseline (closer to previous interpretation)
+    final recentWindowDays = 30;
+    final recentCutoff = _data.isNotEmpty
+        ? _data.last.timestamp.subtract(Duration(days: recentWindowDays))
+        : DateTime.now();
+    final recent = _data.where((p) => p.timestamp.isAfter(recentCutoff)).toList();
+    final recentMean = recent.isNotEmpty
+        ? recent.map((e) => e.consumption).reduce((a, b) => a + b) / recent.length
+        : (_data.isNotEmpty
+            ? _data.map((e) => e.consumption).reduce((a, b) => a + b) / _data.length
+            : 0.0);
+
+    // Forecast next year with daily step and compute mean (respect seasonal toggle)
+    final forecastDays = 365;
+    final List<PowerDataPoint> projected = _seasonal
+        ? MLService.forecastSeasonal(
+            _model!,
+            _data,
+            forecastDays,
+            const Duration(days: 1),
+          )
+        : MLService.forecast(
+            _model!,
+            _data.isNotEmpty ? _data.last.timestamp : DateTime.now(),
+            _historyX,
+            forecastDays,
+            const Duration(days: 1),
+          );
+    final projMean = projected.isNotEmpty
+        ? projected.map((e) => e.consumption).reduce((a, b) => a + b) / projected.length
+        : 0.0;
+    final deltaVsRecentPerDay = projMean - recentMean;
+    final pct = recentMean.abs() > 1e-9 ? (deltaVsRecentPerDay / recentMean) * 100.0 : 0.0;
+
+    String fmt(double v) {
+      final av = v.abs();
+      if (av >= 1) return v.toStringAsFixed(2);
+      if (av >= 0.1) return v.toStringAsFixed(3);
+      return v.toStringAsFixed(4);
+    }
+
+    return Container(
+      padding: EdgeInsets.all(Responsive.s(context, 10)),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          RichText(
+            text: TextSpan(
+              style: AppTheme.bodyTextStyle.copyWith(fontSize: Responsive.sp(context, 14)),
+              children: [
+                const TextSpan(text: 'Interpretation: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                const TextSpan(text: 'Trend is '),
+                TextSpan(text: direction, style: const TextStyle(fontWeight: FontWeight.bold)),
+                const TextSpan(text: '.'),
+              ],
+            ),
+          ),
+          SizedBox(height: Responsive.s(context, 6)),
+          Text('Average change per day (slope): ${fmt(slopePerDay)}/day',
+              style: AppTheme.bodyTextStyle.copyWith(fontSize: Responsive.sp(context, 13))),
+          Text('Projected daily vs recent (~${recentWindowDays}d): '
+              '${fmt(deltaVsRecentPerDay)}/day (${fmt(pct)}%)',
+              style: AppTheme.bodyTextStyle.copyWith(fontSize: Responsive.sp(context, 13))),
+          Text('Fit (R²): ${r2.toStringAsFixed(2)}',
+              style: AppTheme.bodyTextStyle.copyWith(fontSize: Responsive.sp(context, 13))),
         ],
       ),
     );

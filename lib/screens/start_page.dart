@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../app/app_theme.dart';
+import '../app/responsive.dart';
 import '../app/constants.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/gradient_button.dart';
@@ -18,52 +19,60 @@ class StartPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
-        child: SafeArea(
-          child: Stack(
-            children: [
-              // White gradient overlay
-              Positioned.fill(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0x22FFFFFF),
-                        Color(0x44FFFFFF),
-                        Color(0x22FFFFFF),
-                      ],
-                      stops: [0.0, 0.5, 1.0],
-                    ),
-                  ),
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          // Background gradient across the entire screen
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.backgroundGradient,
+              ),
+            ),
+          ),
+          // White overlay gradient across the entire screen
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0x22FFFFFF),
+                    Color(0x44FFFFFF),
+                    Color(0x22FFFFFF),
+                  ],
+                  stops: [0.0, 0.5, 1.0],
                 ),
               ),
-              
-              Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: SingleChildScrollView(
-                  child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 40),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: EdgeInsets.all(Responsive.s(context, 20)),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).padding.bottom + Responsive.s(context, 12),
+                ),
+                child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                    SizedBox(height: Responsive.hp(context, 3)),
                     
                     // Logo 
-                    const LogoWidget(imagePath: 'assets/logo.png',
-                    size: 180.0,
+                    LogoWidget(
+                      imagePath: 'assets/logo.png',
+                      size: Responsive.s(context, 160),
                     ),
                     
                     
-                    const SizedBox(height: 40),
+                    SizedBox(height: Responsive.hp(context, 2.5)),
                     
                     // App Name with split colors - Watts (Black) + Energy (White)
                     RichText(
                       text: TextSpan(
-                        style: const TextStyle(
-                          fontSize: 38, // Slightly larger for rounded font
+                        style: TextStyle(
+                          fontSize: Responsive.sp(context, 34),
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.2,
                           fontFamily: 'VarelaRound', // Using your custom rounded font
@@ -99,7 +108,7 @@ class StartPage extends StatelessWidget {
                       ),
                     ),
                     
-                    const SizedBox(height: 10),
+                    SizedBox(height: Responsive.hp(context, 1)),
                     
                     // Slogan
                     Text(
@@ -110,11 +119,11 @@ class StartPage extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     
-                    const SizedBox(height: 40),
+                    SizedBox(height: Responsive.hp(context, 2.5)),
                     
                     // Glass container with description
                     GlassContainer(
-                      padding: const EdgeInsets.all(24.0),
+                      padding: EdgeInsets.all(Responsive.s(context, 18)),
                       child: Column(
                         children: [
                           Text(
@@ -125,7 +134,7 @@ class StartPage extends StatelessWidget {
                             textAlign: TextAlign.center,
                           ),
                           
-                          const SizedBox(height: 20),
+                          SizedBox(height: Responsive.s(context, 14)),
                           
                           Text(
                             AppConstants.ctaText,
@@ -140,17 +149,17 @@ class StartPage extends StatelessWidget {
                       ),
                     ),
                     
-                    const SizedBox(height: 40),
+                    SizedBox(height: Responsive.hp(context, 2.5)),
                     
                     // Divider
                     Container(
                       height: 1,
                       width: double.infinity,
                       color: Colors.black.withOpacity(0.2),
-                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      margin: EdgeInsets.symmetric(horizontal: Responsive.s(context, 16)),
                     ),
                     
-                    const SizedBox(height: 30),
+                    SizedBox(height: Responsive.hp(context, 2)),
                     
                     // Start Button
                     GradientButton(
@@ -158,7 +167,7 @@ class StartPage extends StatelessWidget {
                       onPressed: () => _onStartPressed(context),
                     ),
                     
-                    const SizedBox(height: 20),
+                    SizedBox(height: Responsive.hp(context, 1.5)),
                     
                     // Footer text
                     const Text(
@@ -170,14 +179,13 @@ class StartPage extends StatelessWidget {
                       ),
                     ),
                     
-                    const SizedBox(height: 20),
-                  ],
-                  ),
+                    SizedBox(height: Responsive.s(context, 10)),
+                ],
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
