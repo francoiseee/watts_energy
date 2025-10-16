@@ -18,6 +18,14 @@ class WatsEnergyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         fontFamily: 'Roboto',
       ),
+      builder: (context, child) {
+        final mq = MediaQuery.of(context);
+        final clampedTextScale = mq.textScaleFactor.clamp(0.85, 1.2);
+        return MediaQuery(
+          data: mq.copyWith(textScaler: TextScaler.linear(clampedTextScale)),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: const StartPage(),
     );
   }

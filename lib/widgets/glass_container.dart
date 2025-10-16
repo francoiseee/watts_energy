@@ -44,8 +44,8 @@ class GlassContainer extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0x15FFFFFF),
-                Color(0x08FFFFFF),
+                Color(0x10FFFFFF),
+                Color(0x05FFFFFF),
               ],
             ),
           ),
