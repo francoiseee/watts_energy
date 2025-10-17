@@ -15,7 +15,8 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String? _selectedFilePath; // native only, path string
   PlatformFile? _selectedWebFile; // web file reference
@@ -52,7 +53,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       if (kIsWeb) {
         final files = result.files.where((f) => f.bytes != null).toList();
         if (files.isNotEmpty) {
-          setState(() { _selectedWebFile = files.first; });
+          setState(() {
+            _selectedWebFile = files.first;
+          });
           await _loadAndTrainMultipleWeb(files);
         }
       } else {
@@ -61,7 +64,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             .map((f) => f.path!)
             .toList();
         if (paths.isNotEmpty) {
-          setState(() { _selectedFilePath = paths.first; });
+          setState(() {
+            _selectedFilePath = paths.first;
+          });
           await _loadAndTrainMultiplePaths(paths);
         }
       }
@@ -128,7 +133,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         );
       }
     } finally {
-      setState(() { _loading = false; });
+      setState(() {
+        _loading = false;
+      });
     }
   }
 
@@ -144,7 +151,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         const SizedBox(height: 16),
         Text(
           'Tap to select CSV ${kIsWeb ? '' : 'or drag-and-drop'}',
-          style: AppTheme.subtitleTextStyle.copyWith(fontWeight: FontWeight.bold),
+          style:
+              AppTheme.subtitleTextStyle.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
@@ -175,7 +183,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       }
       final merged = (!kIsWeb && _usePersistent)
           ? await DataRepository.mergeAndSave(datasets)
-          : (datasets..sort((a,b)=>a.timestamp.compareTo(b.timestamp)));
+          : (datasets..sort((a, b) => a.timestamp.compareTo(b.timestamp)));
 
       final trained = MLService.train(merged);
       final totalDays = 365 * _years;
@@ -207,23 +215,34 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Forecast generated from multiple files')), 
+          const SnackBar(
+              content: Text('Forecast generated from multiple files')),
         );
       }
     } catch (e) {
-      setState(() { _error = e.toString(); });
+      setState(() {
+        _error = e.toString();
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: ${e.toString()}')),
         );
       }
     } finally {
-      setState(() { _loading = false; });
+      setState(() {
+        _loading = false;
+      });
     }
   }
 
   Future<void> _loadAndTrainMultipleWeb(List<PlatformFile> files) async {
-    setState(() { _loading = true; _error = null; _data = []; _forecast = []; _model = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+      _data = [];
+      _forecast = [];
+      _model = null;
+    });
     try {
       final datasets = <PowerDataPoint>[];
       for (final f in files) {
@@ -234,7 +253,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       if (datasets.length < 2) {
         throw Exception('Not enough rows to train. Need at least 2.');
       }
-      datasets.sort((a,b)=>a.timestamp.compareTo(b.timestamp));
+      datasets.sort((a, b) => a.timestamp.compareTo(b.timestamp));
       final trained = MLService.train(datasets);
       final totalDays = 365 * _years;
       final steps = (_step.inSeconds > 0)
@@ -264,18 +283,23 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Forecast generated successfully (web)')),
+          const SnackBar(
+              content: Text('Forecast generated successfully (web)')),
         );
       }
     } catch (e) {
-      setState(() { _error = e.toString(); });
+      setState(() {
+        _error = e.toString();
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: ${e.toString()}')),
         );
       }
     } finally {
-      setState(() { _loading = false; });
+      setState(() {
+        _loading = false;
+      });
     }
   }
 
@@ -389,12 +413,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               DropdownButton<int>(
                 value: _years,
                 items: const [1, 2, 3, 5]
-                    .map((y) => DropdownMenuItem(value: y, child: Text('$y year${y>1?'s':''}')))
+                    .map((y) => DropdownMenuItem(
+                        value: y, child: Text('$y year${y > 1 ? 's' : ''}')))
                     .toList(),
                 onChanged: (v) {
                   if (v == null) return;
                   setState(() => _years = v);
-                  if (_selectedFilePath != null) _loadAndTrainPath(_selectedFilePath!);
+                  if (_selectedFilePath != null)
+                    _loadAndTrainPath(_selectedFilePath!);
                 },
               ),
               SizedBox(width: Responsive.s(context, 12)),
@@ -425,12 +451,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   if (_data.isNotEmpty && _model?.isTrained == true) {
                     final totalDays = 365 * _years;
                     final steps = (_step.inSeconds > 0)
-                        ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
+                        ? (Duration(days: totalDays).inSeconds ~/
+                            _step.inSeconds)
                         : 0;
                     final clampedSteps = steps.clamp(1, 365 * 24 * 5);
                     final preds = _seasonal
-                        ? MLService.forecastSeasonal(_model!, _data, clampedSteps, _step)
-                        : MLService.forecast(_model!, _data.last.timestamp, _historyX, clampedSteps, _step);
+                        ? MLService.forecastSeasonal(
+                            _model!, _data, clampedSteps, _step)
+                        : MLService.forecast(_model!, _data.last.timestamp,
+                            _historyX, clampedSteps, _step);
                     setState(() => _forecast = preds);
                   }
                 },
@@ -446,12 +475,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                       if (_data.isNotEmpty) {
                         final totalDays = 365 * _years;
                         final steps = (_step.inSeconds > 0)
-                            ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
+                            ? (Duration(days: totalDays).inSeconds ~/
+                                _step.inSeconds)
                             : 0;
                         final clampedSteps = steps.clamp(1, 365 * 24 * 5);
                         final preds = _seasonal
-                            ? MLService.forecastSeasonal(_model!, _data, clampedSteps, _step)
-                            : MLService.forecast(_model!, _data.last.timestamp, _historyX, clampedSteps, _step);
+                            ? MLService.forecastSeasonal(
+                                _model!, _data, clampedSteps, _step)
+                            : MLService.forecast(_model!, _data.last.timestamp,
+                                _historyX, clampedSteps, _step);
                         setState(() => _forecast = preds);
                       }
                     },
@@ -468,13 +500,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                       setState(() => _usePersistent = v);
                       if (_data.isNotEmpty) {
                         if (_selectedFilePath != null) {
-                          await _loadAndTrainMultiplePaths([_selectedFilePath!]);
+                          await _loadAndTrainMultiplePaths(
+                              [_selectedFilePath!]);
                         }
                       }
                     },
                   ),
                   const SizedBox(width: 6),
-                  Text('Use saved training data', style: AppTheme.bodyTextStyle),
+                  Text('Use saved training data',
+                      style: AppTheme.bodyTextStyle),
                 ],
               ),
             ],
@@ -493,9 +527,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               child: _uploadCardBody(),
             ),
           ),
-
           SizedBox(height: Responsive.s(context, 14)),
-
           if (!kIsWeb && _selectedFilePath != null)
             Container(
               padding: EdgeInsets.all(Responsive.s(context, 10)),
@@ -529,7 +561,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 ],
               ),
             ),
-
           if (kIsWeb && _selectedWebFile != null)
             Container(
               padding: EdgeInsets.all(Responsive.s(context, 10)),
@@ -550,17 +581,19 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   ),
                   IconButton(
                     icon: const Icon(Icons.close, color: Colors.black87),
-                    onPressed: () { setState(() { _selectedWebFile = null; }); },
+                    onPressed: () {
+                      setState(() {
+                        _selectedWebFile = null;
+                      });
+                    },
                   ),
                 ],
               ),
             ),
-
           if (_loading) ...[
             const SizedBox(height: 16),
             const CircularProgressIndicator(color: Colors.black),
           ],
-
           if (_error != null) ...[
             const SizedBox(height: 16),
             Text(
@@ -575,6 +608,21 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Widget _buildGraphTab() {
+    // Downsample helper: averages every N points to reduce total count
+    List<PowerDataPoint> downsample(List<PowerDataPoint> data, int maxPoints) {
+      if (data.length <= maxPoints) return data;
+      int groupSize = (data.length / maxPoints).ceil();
+      List<PowerDataPoint> result = [];
+      for (int i = 0; i < data.length; i += groupSize) {
+        final group = data.sublist(i, (i + groupSize).clamp(0, data.length));
+        final avgConsumption =
+            group.map((e) => e.consumption).reduce((a, b) => a + b) /
+                group.length;
+        result.add(PowerDataPoint(group.first.timestamp, avgConsumption));
+      }
+      return result;
+    }
+
     if (_data.isEmpty && _forecast.isEmpty) {
       return Center(
         child: Text(
@@ -586,30 +634,38 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
 
     final all = [..._data, ..._forecast];
-    final minYData = all.map((e) => e.consumption).reduce((a, b) => a < b ? a : b);
+    final minYData =
+        all.map((e) => e.consumption).reduce((a, b) => a < b ? a : b);
     final maxY = all.map((e) => e.consumption).reduce((a, b) => a > b ? a : b);
     final minT = _data.first.timestamp.millisecondsSinceEpoch.toDouble();
     final maxT = all.last.timestamp.millisecondsSinceEpoch.toDouble();
     final spanHours = (maxT - minT) / (3600 * 1000);
     final showDays = spanHours >= 72; // if > 3 days, show days
-    double toX(DateTime t) => (t.millisecondsSinceEpoch.toDouble() - minT) / (3600 * 1000);
+    double toX(DateTime t) =>
+        (t.millisecondsSinceEpoch.toDouble() - minT) / (3600 * 1000);
 
-    final dataSorted = [..._data]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final dataSorted = [..._data]
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     List<PowerDataPoint> historyForChart;
     if (_step.inDays >= 1) {
       final byDay = <DateTime, List<double>>{};
       for (final p in dataSorted) {
-        final day = DateTime(p.timestamp.year, p.timestamp.month, p.timestamp.day);
+        final day =
+            DateTime(p.timestamp.year, p.timestamp.month, p.timestamp.day);
         byDay.putIfAbsent(day, () => []).add(p.consumption);
       }
       final days = byDay.keys.toList()..sort();
       historyForChart = [
         for (final d in days)
-          PowerDataPoint(d, byDay[d]!.reduce((a, b) => a + b) / byDay[d]!.length),
+          PowerDataPoint(
+              d, byDay[d]!.reduce((a, b) => a + b) / byDay[d]!.length),
       ];
     } else {
       historyForChart = dataSorted;
     }
+    // Downsample if too many points
+    const int maxPoints = 200;
+    historyForChart = downsample(historyForChart, maxPoints);
 
     List<FlSpot> maSpots = [];
     if (historyForChart.length >= 7) {
@@ -622,15 +678,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       }
     }
 
-    final historySpots = historyForChart.map((p) => FlSpot(toX(p.timestamp), p.consumption)).toList();
-    final forecastSpots = _forecast.map((p) => FlSpot(toX(p.timestamp), p.consumption)).toList();
+    final historySpots = historyForChart
+        .map((p) => FlSpot(toX(p.timestamp), p.consumption))
+        .toList();
+    final forecastSpots =
+        _forecast.map((p) => FlSpot(toX(p.timestamp), p.consumption)).toList();
 
     final trendSpots = <FlSpot>[];
     if (_model?.isTrained == true) {
       final firstTs = _data.first.timestamp;
       final lastTs = all.last.timestamp;
       final x0sec = 0.0;
-      final x1sec = (lastTs.millisecondsSinceEpoch - firstTs.millisecondsSinceEpoch) / 1000.0;
+      final x1sec =
+          (lastTs.millisecondsSinceEpoch - firstTs.millisecondsSinceEpoch) /
+              1000.0;
       final y0 = _model!.a! + _model!.b! * x0sec;
       final y1 = _model!.a! + _model!.b! * x1sec;
       trendSpots.add(FlSpot(toX(firstTs), y0));
@@ -643,8 +704,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Power consumption (history + ${_years}y forecast, step ${_step.inDays>=1 ? "${_step.inDays}d" : "${_step.inHours}h"})',
-            style: AppTheme.titleTextStyle.copyWith(fontSize: Responsive.sp(context, 18)),
+            'Power consumption (history + ${_years}y forecast, step ${_step.inDays >= 1 ? "${_step.inDays}d" : "${_step.inHours}h"})',
+            style: AppTheme.titleTextStyle
+                .copyWith(fontSize: Responsive.sp(context, 18)),
           ),
           SizedBox(height: Responsive.s(context, 10)),
           Expanded(
@@ -654,8 +716,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 maxY: (maxY * 1.05),
                 gridData: FlGridData(
                   show: true,
-                  getDrawingHorizontalLine: (value) => const FlLine(color: Colors.black12, strokeWidth: 1),
-                  getDrawingVerticalLine: (value) => const FlLine(color: Colors.black12, strokeWidth: 1),
+                  getDrawingHorizontalLine: (value) =>
+                      const FlLine(color: Colors.black12, strokeWidth: 1),
+                  getDrawingVerticalLine: (value) =>
+                      const FlLine(color: Colors.black12, strokeWidth: 1),
                 ),
                 titlesData: FlTitlesData(
                   bottomTitles: AxisTitles(
@@ -664,7 +728,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                       reservedSize: 32,
                       interval: showDays ? 24 : 6,
                       getTitlesWidget: (value, meta) => Text(
-                        showDays ? '${(value/24).toStringAsFixed(0)}d' : '${value.toStringAsFixed(0)}h',
+                        showDays
+                            ? '${(value / 24).toStringAsFixed(0)}d'
+                            : '${value.toStringAsFixed(0)}h',
                         style: AppTheme.bodyTextStyle.copyWith(fontSize: 12),
                       ),
                     ),
@@ -679,8 +745,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                       ),
                     ),
                   ),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
                 ),
                 lineBarsData: [
                   LineChartBarData(
@@ -736,14 +804,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             crossAxisAlignment: WrapCrossAlignment.center,
             children: const [
               _LegendItem(label: 'History', color: Colors.black, dashed: false),
-              _LegendItem(label: '7-day MA', color: Colors.green, dashed: false),
-              _LegendItem(label: 'Forecast', color: Colors.blueGrey, dashed: true),
+              _LegendItem(
+                  label: '7-day MA', color: Colors.green, dashed: false),
+              _LegendItem(
+                  label: 'Forecast', color: Colors.blueGrey, dashed: true),
               _LegendItem(label: 'Trend', color: Colors.orange, dashed: true),
             ],
           ),
           SizedBox(height: Responsive.s(context, 10)),
-          if (_model?.isTrained == true)
-            _buildInterpretation(context),
+          if (_model?.isTrained == true) _buildInterpretation(context),
         ],
       ),
     );
@@ -763,11 +832,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final recentCutoff = _data.isNotEmpty
         ? _data.last.timestamp.subtract(Duration(days: recentWindowDays))
         : DateTime.now();
-    final recent = _data.where((p) => p.timestamp.isAfter(recentCutoff)).toList();
+    final recent =
+        _data.where((p) => p.timestamp.isAfter(recentCutoff)).toList();
     final recentMean = recent.isNotEmpty
-        ? recent.map((e) => e.consumption).reduce((a, b) => a + b) / recent.length
+        ? recent.map((e) => e.consumption).reduce((a, b) => a + b) /
+            recent.length
         : (_data.isNotEmpty
-            ? _data.map((e) => e.consumption).reduce((a, b) => a + b) / _data.length
+            ? _data.map((e) => e.consumption).reduce((a, b) => a + b) /
+                _data.length
             : 0.0);
 
     // Forecast next year with daily step and compute mean (respect seasonal toggle)
@@ -787,10 +859,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             const Duration(days: 1),
           );
     final projMean = projected.isNotEmpty
-        ? projected.map((e) => e.consumption).reduce((a, b) => a + b) / projected.length
+        ? projected.map((e) => e.consumption).reduce((a, b) => a + b) /
+            projected.length
         : 0.0;
     final deltaVsRecentPerDay = projMean - recentMean;
-    final pct = recentMean.abs() > 1e-9 ? (deltaVsRecentPerDay / recentMean) * 100.0 : 0.0;
+    final pct = recentMean.abs() > 1e-9
+        ? (deltaVsRecentPerDay / recentMean) * 100.0
+        : 0.0;
 
     String fmt(double v) {
       final av = v.abs();
@@ -810,23 +885,32 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         children: [
           RichText(
             text: TextSpan(
-              style: AppTheme.bodyTextStyle.copyWith(fontSize: Responsive.sp(context, 14)),
+              style: AppTheme.bodyTextStyle
+                  .copyWith(fontSize: Responsive.sp(context, 14)),
               children: [
-                const TextSpan(text: 'Interpretation: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                const TextSpan(
+                    text: 'Interpretation: ',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
                 const TextSpan(text: 'Trend is '),
-                TextSpan(text: direction, style: const TextStyle(fontWeight: FontWeight.bold)),
+                TextSpan(
+                    text: direction,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
                 const TextSpan(text: '.'),
               ],
             ),
           ),
           SizedBox(height: Responsive.s(context, 6)),
           Text('Average change per day (slope): ${fmt(slopePerDay)}/day',
-              style: AppTheme.bodyTextStyle.copyWith(fontSize: Responsive.sp(context, 13))),
-          Text('Projected daily vs recent (~${recentWindowDays}d): '
+              style: AppTheme.bodyTextStyle
+                  .copyWith(fontSize: Responsive.sp(context, 13))),
+          Text(
+              'Projected daily vs recent (~${recentWindowDays}d): '
               '${fmt(deltaVsRecentPerDay)}/day (${fmt(pct)}%)',
-              style: AppTheme.bodyTextStyle.copyWith(fontSize: Responsive.sp(context, 13))),
+              style: AppTheme.bodyTextStyle
+                  .copyWith(fontSize: Responsive.sp(context, 13))),
           Text('Fit (R²): ${r2.toStringAsFixed(2)}',
-              style: AppTheme.bodyTextStyle.copyWith(fontSize: Responsive.sp(context, 13))),
+              style: AppTheme.bodyTextStyle
+                  .copyWith(fontSize: Responsive.sp(context, 13))),
         ],
       ),
     );
@@ -837,7 +921,8 @@ class _LegendItem extends StatelessWidget {
   final String label;
   final Color color;
   final bool dashed;
-  const _LegendItem({required this.label, required this.color, this.dashed = false});
+  const _LegendItem(
+      {required this.label, required this.color, this.dashed = false});
 
   @override
   Widget build(BuildContext context) {
