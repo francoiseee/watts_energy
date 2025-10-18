@@ -511,22 +511,65 @@ class _HomePageState extends State<HomePage>
                     return;
                   }
                   try {
-                    // Generate a larger synthetic dataset based on the loaded data
+                    // Keep generation manageable and consistent regardless of UI step
+                    // Choose a reasonable target length without throwing if dataset is already huge
+                    final int desired = _data.length * 3;
+                    final int minPoints = _data.length + 10;
+                    const int maxPoints = 10000;
+                    int points = desired;
+                    if (maxPoints < minPoints) {
+                      // Dataset is already larger than our cap; don't expand further
+                      points = _data.length;
+                    } else {
+                      if (points < minPoints) points = minPoints;
+                      if (points > maxPoints) points = maxPoints;
+                    }
                     final synthetic = SyntheticDataGenerator.expand(
                       _data,
-                      step: _step.inSeconds > 0 ? _step : const Duration(hours: 1),
-                      totalPoints: (_data.length * 5).clamp(_data.length + 10, 20000),
+                      step: const Duration(hours: 1),
+                      totalPoints: points,
                       noiseStd: 0.05,
                       seasonality: true,
                       randomSeed: 42,
                     );
+                    if (synthetic.isEmpty) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Synthetic generation produced no data. Try uploading a larger dataset.')),
+                        );
+                      }
+                      return;
+                    }
+
                     // Convert to CSV
                     final csvRows = <List<dynamic>>[
                       ['timestamp', 'consumption'],
                       ...synthetic.map((p) => [p.timestamp.toIso8601String(), p.consumption])
                     ];
-                    final csv = const ListToCsvConverter().convert(csvRows);
-                    final path = await FileOutput.saveCsv('synthetic_from_uploaded.csv', csv);
+                    String csv;
+                    try {
+                      csv = const ListToCsvConverter().convert(csvRows);
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed converting to CSV: $e')),
+                        );
+                      }
+                      return;
+                    }
+
+                    String path;
+                    try {
+                      path = await FileOutput.saveCsv('synthetic_from_uploaded.csv', csv);
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed saving CSV: $e')),
+                        );
+                      }
+                      return;
+                    }
+
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Synthetic dataset saved: $path')),
