@@ -66,14 +66,15 @@ class MLService {
       throw ArgumentError('No data provided');
     }
     data.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    final start = data.first.timestamp.millisecondsSinceEpoch.toDouble();
-    final xs = data
+    // Light smoothing to reduce high-frequency noise
+    final smoothed = _movingAverage(data, window: 3);
+    final start = smoothed.first.timestamp.millisecondsSinceEpoch.toDouble();
+    final xs = smoothed
         .map((d) => (d.timestamp.millisecondsSinceEpoch.toDouble() - start) / 1000.0)
         .toList();
-    final ys = data.map((d) => d.consumption).toList();
+    final ys = smoothed.map((d) => d.consumption).toList();
 
-    final model = LinearRegressionModel();
-    model.fit(xs, ys);
+    final model = _robustFit(xs, ys);
     return (model: model, historyX: xs);
   }
 
@@ -155,5 +156,73 @@ class MLService {
       results.add(PowerDataPoint(t, y));
     }
     return results;
+  }
+}
+
+// Helpers for robustness
+List<PowerDataPoint> _movingAverage(List<PowerDataPoint> data, {int window = 3}) {
+  if (data.length <= 2 || window <= 1) return data;
+  final w = window.clamp(2, 21);
+  final out = <PowerDataPoint>[];
+  for (int i = 0; i < data.length; i++) {
+    final start = (i - (w ~/ 2)).clamp(0, data.length - 1);
+    final end = (i + (w ~/ 2) + 1).clamp(0, data.length);
+    final slice = data.sublist(start, end);
+    final mean = slice.map((e) => e.consumption).reduce((a, b) => a + b) / slice.length;
+    out.add(PowerDataPoint(data[i].timestamp, mean));
+  }
+  return out;
+}
+
+LinearRegressionModel _robustFit(List<double> xs, List<double> ys) {
+  final model = LinearRegressionModel();
+  if (xs.length < 10) {
+    model.fit(xs, ys);
+    return model;
+  }
+  // RANSAC-like: sample pairs to estimate slope, choose model with best median absolute residual
+  final rand = DateTime.now().millisecondsSinceEpoch;
+  int iters = (50 + xs.length).clamp(50, 500);
+  double bestScore = double.infinity;
+  double bestA = 0, bestB = 0;
+  for (int k = 0; k < iters; k++) {
+    final i = (rand * (k + 3) + k * 37) % xs.length;
+    final j = (rand * (k + 5) + k * 91) % xs.length;
+    final i1 = i.toInt();
+    final j1 = (j == i ? (j + 1) % xs.length : j).toInt();
+    final dx = xs[j1] - xs[i1];
+    if (dx.abs() < 1e-9) continue;
+    final b = (ys[j1] - ys[i1]) / dx;
+    final a = ys[i1] - b * xs[i1];
+    // Score by median absolute residual
+    final res = <double>[];
+    for (int t = 0; t < xs.length; t++) {
+      res.add((ys[t] - (a + b * xs[t])).abs());
+    }
+    res.sort();
+    final med = res[res.length ~/ 2];
+    if (med < bestScore) {
+      bestScore = med;
+      bestA = a;
+      bestB = b;
+    }
+  }
+  if (bestScore.isFinite) {
+    model.a = bestA;
+    model.b = bestB;
+    // Compute R^2 for reference
+    final yBar = ys.reduce((v, e) => v + e) / ys.length;
+    double ssTot = 0.0, ssRes = 0.0;
+    for (int i = 0; i < xs.length; i++) {
+      final yi = ys[i];
+      final yHat = bestA + bestB * xs[i];
+      ssTot += (yi - yBar) * (yi - yBar);
+      ssRes += (yi - yHat) * (yi - yHat);
+    }
+    model.rSquared = ssTot == 0 ? 0.0 : (1 - ssRes / ssTot);
+    return model;
+  } else {
+    model.fit(xs, ys);
+    return model;
   }
 }

@@ -23,18 +23,32 @@ class _HomePageState extends State<HomePage>
   List<PowerDataPoint> _data = [];
   List<PowerDataPoint> _forecast = [];
   LinearRegressionModel? _model;
-  List<double> _historyX = [];
+  // _historyX not needed for seasonal forecast
   String? _error;
   bool _loading = false;
   int _years = 1; // forecast horizon in years
   Duration _step = const Duration(days: 1); // default daily step
   bool _usePersistent = false; // include stored training data
-  bool _seasonal = true; // seasonal adjustment toggle
+  // Seasonal toggle removed; app uses non-seasonal forecast by default
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadPersistedForecast();
+  }
+
+  Future<void> _loadPersistedForecast() async {
+    try {
+      final saved = await DataRepository.loadForecast();
+      if (saved.isNotEmpty) {
+        setState(() {
+          _forecast = saved..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        });
+      }
+    } catch (_) {
+      // ignore
+    }
   }
 
   @override
@@ -96,28 +110,27 @@ class _HomePageState extends State<HomePage>
           ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
           : 0;
       final clampedSteps = steps.clamp(1, 365 * 24 * 5);
-      final preds = _seasonal
-          ? MLService.forecastSeasonal(
-              model,
-              merged,
-              clampedSteps,
-              _step,
-            )
-          : MLService.forecast(
-              model,
-              merged.last.timestamp,
-              trained.historyX,
-              clampedSteps,
-              _step,
-            );
+      final preds = MLService.forecastSeasonal(
+        model,
+        merged,
+        clampedSteps,
+        _step,
+      );
 
       setState(() {
         _data = merged;
         _forecast = preds;
         _model = model;
-        _historyX = trained.historyX;
         _tabController.animateTo(1);
       });
+      // Persist forecast for later sessions
+      await DataRepository.saveForecast(
+        preds,
+        stepSeconds: _step.inSeconds,
+        horizonSteps: clampedSteps,
+        a: model.a,
+        b: model.b,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Forecast generated successfully')),
@@ -191,28 +204,26 @@ class _HomePageState extends State<HomePage>
           ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
           : 0;
       final clampedSteps = steps.clamp(1, 365 * 24 * 5);
-      final preds = _seasonal
-          ? MLService.forecastSeasonal(
-              trained.model,
-              merged,
-              clampedSteps,
-              _step,
-            )
-          : MLService.forecast(
-              trained.model,
-              merged.last.timestamp,
-              trained.historyX,
-              clampedSteps,
-              _step,
-            );
+      final preds = MLService.forecastSeasonal(
+        trained.model,
+        merged,
+        clampedSteps,
+        _step,
+      );
 
       setState(() {
         _data = merged;
         _forecast = preds;
         _model = trained.model;
-        _historyX = trained.historyX;
         _tabController.animateTo(1);
       });
+      await DataRepository.saveForecast(
+        preds,
+        stepSeconds: _step.inSeconds,
+        horizonSteps: clampedSteps,
+        a: trained.model.a,
+        b: trained.model.b,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -260,27 +271,25 @@ class _HomePageState extends State<HomePage>
           ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
           : 0;
       final clampedSteps = steps.clamp(1, 365 * 24 * 5);
-      final preds = _seasonal
-          ? MLService.forecastSeasonal(
-              trained.model,
-              datasets,
-              clampedSteps,
-              _step,
-            )
-          : MLService.forecast(
-              trained.model,
-              datasets.last.timestamp,
-              trained.historyX,
-              clampedSteps,
-              _step,
-            );
+      final preds = MLService.forecastSeasonal(
+        trained.model,
+        datasets,
+        clampedSteps,
+        _step,
+      );
       setState(() {
         _data = datasets;
         _forecast = preds;
         _model = trained.model;
-        _historyX = trained.historyX;
         _tabController.animateTo(1);
       });
+      await DataRepository.saveForecast(
+        preds,
+        stepSeconds: _step.inSeconds,
+        horizonSteps: clampedSteps,
+        a: trained.model.a,
+        b: trained.model.b,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -455,41 +464,17 @@ class _HomePageState extends State<HomePage>
                             _step.inSeconds)
                         : 0;
                     final clampedSteps = steps.clamp(1, 365 * 24 * 5);
-                    final preds = _seasonal
-                        ? MLService.forecastSeasonal(
-                            _model!, _data, clampedSteps, _step)
-                        : MLService.forecast(_model!, _data.last.timestamp,
-                            _historyX, clampedSteps, _step);
+                    final preds = MLService.forecastSeasonal(
+                      _model!,
+                      _data,
+                      clampedSteps,
+                      _step,
+                    );
                     setState(() => _forecast = preds);
                   }
                 },
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Seasonal', style: AppTheme.bodyTextStyle),
-                  Switch(
-                    value: _seasonal,
-                    onChanged: (v) async {
-                      setState(() => _seasonal = v);
-                      if (_data.isNotEmpty) {
-                        final totalDays = 365 * _years;
-                        final steps = (_step.inSeconds > 0)
-                            ? (Duration(days: totalDays).inSeconds ~/
-                                _step.inSeconds)
-                            : 0;
-                        final clampedSteps = steps.clamp(1, 365 * 24 * 5);
-                        final preds = _seasonal
-                            ? MLService.forecastSeasonal(
-                                _model!, _data, clampedSteps, _step)
-                            : MLService.forecast(_model!, _data.last.timestamp,
-                                _historyX, clampedSteps, _step);
-                        setState(() => _forecast = preds);
-                      }
-                    },
-                  ),
-                ],
-              ),
+              // Seasonal toggle removed
               Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -500,8 +485,9 @@ class _HomePageState extends State<HomePage>
                       setState(() => _usePersistent = v);
                       if (_data.isNotEmpty) {
                         if (_selectedFilePath != null) {
-                          await _loadAndTrainMultiplePaths(
-                              [_selectedFilePath!]);
+                          await _loadAndTrainMultiplePaths([
+                            _selectedFilePath!
+                          ]);
                         }
                       }
                     },
@@ -844,20 +830,12 @@ class _HomePageState extends State<HomePage>
 
     // Forecast next year with daily step and compute mean (respect seasonal toggle)
     final forecastDays = 365;
-    final List<PowerDataPoint> projected = _seasonal
-        ? MLService.forecastSeasonal(
-            _model!,
-            _data,
-            forecastDays,
-            const Duration(days: 1),
-          )
-        : MLService.forecast(
-            _model!,
-            _data.isNotEmpty ? _data.last.timestamp : DateTime.now(),
-            _historyX,
-            forecastDays,
-            const Duration(days: 1),
-          );
+    final List<PowerDataPoint> projected = MLService.forecastSeasonal(
+      _model!,
+      _data,
+      forecastDays,
+      const Duration(days: 1),
+    );
     final projMean = projected.isNotEmpty
         ? projected.map((e) => e.consumption).reduce((a, b) => a + b) /
             projected.length
