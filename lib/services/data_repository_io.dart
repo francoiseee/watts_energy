@@ -7,13 +7,22 @@ class DataRepository {
   static const _fileName = 'training_data.json';
   static const _forecastFileName = 'forecast_data.json';
 
+  static Future<Directory> _getBaseDir() async {
+    // On desktop platforms, save to the current working directory (project folder during dev)
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return Directory.current;
+    }
+    // On mobile, use the app documents directory
+    return await getApplicationDocumentsDirectory();
+  }
+
   static Future<File> _getFile() async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await _getBaseDir();
     return File('${dir.path}/$_fileName');
   }
 
   static Future<File> _getForecastFile() async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await _getBaseDir();
     return File('${dir.path}/$_forecastFileName');
   }
 

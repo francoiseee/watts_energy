@@ -7,6 +7,9 @@ import '../app/responsive.dart';
 import '../services/csv_loader.dart';
 import '../services/ml_service.dart';
 import '../services/data_repository.dart';
+import '../services/synthetic_data_generator.dart';
+import '../services/file_output.dart';
+import 'package:csv/csv.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -496,6 +499,49 @@ class _HomePageState extends State<HomePage>
                   Text('Use saved training data',
                       style: AppTheme.bodyTextStyle),
                 ],
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (_data.isEmpty) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please upload a dataset first to generate a dummy dataset.')),
+                      );
+                    }
+                    return;
+                  }
+                  try {
+                    // Generate a larger synthetic dataset based on the loaded data
+                    final synthetic = SyntheticDataGenerator.expand(
+                      _data,
+                      step: _step.inSeconds > 0 ? _step : const Duration(hours: 1),
+                      totalPoints: (_data.length * 5).clamp(_data.length + 10, 20000),
+                      noiseStd: 0.05,
+                      seasonality: true,
+                      randomSeed: 42,
+                    );
+                    // Convert to CSV
+                    final csvRows = <List<dynamic>>[
+                      ['timestamp', 'consumption'],
+                      ...synthetic.map((p) => [p.timestamp.toIso8601String(), p.consumption])
+                    ];
+                    final csv = const ListToCsvConverter().convert(csvRows);
+                    final path = await FileOutput.saveCsv('synthetic_from_uploaded.csv', csv);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Synthetic dataset saved: $path')),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to generate synthetic dataset: $e')),
+                      );
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
+                child: const Text('Generate dummy dataset from uploaded', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
