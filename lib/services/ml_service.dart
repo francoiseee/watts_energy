@@ -181,13 +181,14 @@ LinearRegressionModel _robustFit(List<double> xs, List<double> ys) {
     return model;
   }
   // RANSAC-like: sample pairs to estimate slope, choose model with best median absolute residual
-  final rand = DateTime.now().millisecondsSinceEpoch;
+  // Deterministic seeding from data to make forecasts reproducible run-to-run
+  final seed = _seedFromData(xs, ys);
   int iters = (50 + xs.length).clamp(50, 500);
   double bestScore = double.infinity;
   double bestA = 0, bestB = 0;
   for (int k = 0; k < iters; k++) {
-    final i = (rand * (k + 3) + k * 37) % xs.length;
-    final j = (rand * (k + 5) + k * 91) % xs.length;
+    final i = (seed * (k + 3) + k * 37) % xs.length;
+    final j = (seed * (k + 5) + k * 91) % xs.length;
     final i1 = i.toInt();
     final j1 = (j == i ? (j + 1) % xs.length : j).toInt();
     final dx = xs[j1] - xs[i1];
@@ -225,4 +226,28 @@ LinearRegressionModel _robustFit(List<double> xs, List<double> ys) {
     model.fit(xs, ys);
     return model;
   }
+}
+
+// Deterministic seed derived from the input data (cheap rolling hash over sampled points)
+int _seedFromData(List<double> xs, List<double> ys) {
+  int h = 0x811C9DC5; // FNV-1a 32-bit offset basis
+  int mix(int v) {
+    h ^= (v & 0xFFFFFFFF);
+    h = (h * 16777619) & 0xFFFFFFFF; // FNV prime
+    return h;
+  }
+
+  int stepX = (xs.length / 64).ceil();
+  if (stepX <= 0) stepX = 1;
+  for (int i = 0; i < xs.length; i += stepX) {
+    mix(((xs[i]) * 1e6).round());
+  }
+  int stepY = (ys.length / 64).ceil();
+  if (stepY <= 0) stepY = 1;
+  for (int i = 0; i < ys.length; i += stepY) {
+    mix(((ys[i]) * 1e6).round());
+  }
+  mix(xs.length);
+  mix(ys.length << 16);
+  return h & 0x7FFFFFFF; // positive int
 }
