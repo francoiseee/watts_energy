@@ -60,8 +60,9 @@ class StartPage extends StatelessWidget {
                     SizedBox(height: Responsive.hp(context, 3)),
                     
                     // Logo 
+                    // Try .ong as requested; fallback to .png
                     LogoWidget(
-                      imagePath: 'assets/logo.png',
+                      imagePath: 'assets/logo.ong',
                       size: Responsive.s(context, 160),
                     ),
                     

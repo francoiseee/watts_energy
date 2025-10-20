@@ -1,6 +1,6 @@
 {
-    "name": "energy_consumption",
-    "short_name": "energy_consumption",
+    "name": "WattsEnergy",
+    "short_name": "WattsEnergy",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

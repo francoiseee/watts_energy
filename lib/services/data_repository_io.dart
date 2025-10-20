@@ -117,4 +117,34 @@ class DataRepository {
     await save(merged);
     return merged;
   }
+
+  static Future<void> clearTraining() async {
+    try {
+      final dir = await _getBaseDir();
+      final f = File('${dir.path}/$_fileName');
+      if (await f.exists()) await f.delete();
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  // Merge with saved data without writing back; useful when user wants to compare
+  // forecasts with/without saved history without mutating the stored set.
+  static Future<List<PowerDataPoint>> mergeWithSaved(List<PowerDataPoint> newData) async {
+    final existing = await load();
+    if (existing.isEmpty) {
+      final copy = [...newData]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      return copy;
+    }
+    final map = <int, PowerDataPoint>{};
+    for (final p in existing) {
+      map[p.timestamp.millisecondsSinceEpoch] = p;
+    }
+    for (final p in newData) {
+      map[p.timestamp.millisecondsSinceEpoch] = p;
+    }
+    final merged = map.values.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return merged;
+  }
 }

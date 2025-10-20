@@ -24,6 +24,9 @@ class _HomePageState extends State<HomePage>
   String? _selectedFilePath; // native only, path string
   PlatformFile? _selectedWebFile; // web file reference
   List<PowerDataPoint> _data = [];
+  // Raw dataset from the most recent upload (unmerged); used to recompute
+  // with/without saved data when the toggle changes.
+  List<PowerDataPoint> _uploadedData = [];
   List<PowerDataPoint> _forecast = [];
   LinearRegressionModel? _model;
   // _historyX not needed for seasonal forecast
@@ -99,13 +102,20 @@ class _HomePageState extends State<HomePage>
       _model = null;
     });
     try {
-      final data = await CsvLoader.loadPowerDataFromPath(path);
-      if (data.length < 2) {
+      final raw = await CsvLoader.loadPowerDataFromPath(path);
+      if (raw.length < 2) {
         throw Exception('Not enough rows to train. Need at least 2.');
       }
-      final merged = (!kIsWeb && _usePersistent)
-          ? await DataRepository.mergeAndSave(data)
-          : data;
+      final sorted = [...raw]
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      _uploadedData = sorted;
+      final merged = _usePersistent
+          ? await DataRepository.mergeWithSaved(_uploadedData)
+          : _uploadedData;
+      if (_usePersistent) {
+        // Persist the union so future sessions truly have additional history
+        await DataRepository.save(merged);
+      }
       final trained = MLService.train(merged);
       final model = trained.model;
       final totalDays = 365 * _years;
@@ -197,9 +207,14 @@ class _HomePageState extends State<HomePage>
       if (datasets.length < 2) {
         throw Exception('Not enough rows to train. Need at least 2.');
       }
-      final merged = (!kIsWeb && _usePersistent)
-          ? await DataRepository.mergeAndSave(datasets)
-          : (datasets..sort((a, b) => a.timestamp.compareTo(b.timestamp)));
+      datasets.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      _uploadedData = [...datasets];
+      final merged = _usePersistent
+          ? await DataRepository.mergeWithSaved(_uploadedData)
+          : _uploadedData;
+      if (_usePersistent) {
+        await DataRepository.save(merged);
+      }
 
       final trained = MLService.train(merged);
       final totalDays = 365 * _years;
@@ -268,7 +283,14 @@ class _HomePageState extends State<HomePage>
         throw Exception('Not enough rows to train. Need at least 2.');
       }
       datasets.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-      final trained = MLService.train(datasets);
+      _uploadedData = [...datasets];
+      final merged = _usePersistent
+          ? await DataRepository.mergeWithSaved(_uploadedData)
+          : _uploadedData;
+      if (_usePersistent) {
+        await DataRepository.save(merged);
+      }
+      final trained = MLService.train(merged);
       final totalDays = 365 * _years;
       final steps = (_step.inSeconds > 0)
           ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
@@ -276,12 +298,12 @@ class _HomePageState extends State<HomePage>
       final clampedSteps = steps.clamp(1, 365 * 24 * 5);
       final preds = MLService.forecastSeasonal(
         trained.model,
-        datasets,
+        merged,
         clampedSteps,
         _step,
       );
       setState(() {
-        _data = datasets;
+        _data = merged;
         _forecast = preds;
         _model = trained.model;
         _tabController.animateTo(1);
@@ -315,6 +337,121 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  Future<void> _retrainFromUploaded() async {
+    if (_uploadedData.isEmpty) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final merged = _usePersistent
+          ? await DataRepository.mergeWithSaved(_uploadedData)
+          : _uploadedData;
+      if (_usePersistent) {
+        await DataRepository.save(merged);
+      }
+      final trained = MLService.train(merged);
+      final totalDays = 365 * _years;
+      final steps = (_step.inSeconds > 0)
+          ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
+          : 0;
+      final clampedSteps = steps.clamp(1, 365 * 24 * 5);
+      final preds = MLService.forecastSeasonal(
+        trained.model,
+        merged,
+        clampedSteps,
+        _step,
+      );
+      setState(() {
+        _data = merged;
+        _model = trained.model;
+        _forecast = preds;
+        _tabController.animateTo(1);
+      });
+      await DataRepository.saveForecast(
+        preds,
+        stepSeconds: _step.inSeconds,
+        horizonSteps: clampedSteps,
+        a: trained.model.a,
+        b: trained.model.b,
+      );
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _retrainFromSavedOnly() async {
+    // Train and forecast using only the saved training dataset
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final saved = await DataRepository.load();
+      if (saved.isEmpty) {
+        setState(() {
+          _loading = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No saved training data to use.')),
+          );
+        }
+        return;
+      }
+      final merged = [...saved]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      final trained = MLService.train(merged);
+      final totalDays = 365 * _years;
+      final steps = (_step.inSeconds > 0)
+          ? (Duration(days: totalDays).inSeconds ~/ _step.inSeconds)
+          : 0;
+      final clampedSteps = steps.clamp(1, 365 * 24 * 5);
+      final preds = MLService.forecastSeasonal(
+        trained.model,
+        merged,
+        clampedSteps,
+        _step,
+      );
+      setState(() {
+        _data = merged;
+        _model = trained.model;
+        _forecast = preds;
+        _tabController.animateTo(1);
+      });
+      await DataRepository.saveForecast(
+        preds,
+        stepSeconds: _step.inSeconds,
+        horizonSteps: clampedSteps,
+        a: trained.model.a,
+        b: trained.model.b,
+      );
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -326,9 +463,14 @@ class _HomePageState extends State<HomePage>
           mainAxisSize: MainAxisSize.min,
           children: [
             Image.asset(
-              'assets/logo.png',
+              'assets/logo.ong',
               height: Responsive.s(context, 28),
               width: Responsive.s(context, 28),
+              errorBuilder: (context, error, stackTrace) => Image.asset(
+                'assets/logo.png',
+                height: Responsive.s(context, 28),
+                width: Responsive.s(context, 28),
+              ),
             ),
             SizedBox(width: Responsive.s(context, 8)),
             RichText(
@@ -482,24 +624,100 @@ class _HomePageState extends State<HomePage>
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Switch(
-                    value: _usePersistent,
-                    onChanged: (v) async {
-                      setState(() => _usePersistent = v);
-                      if (_data.isNotEmpty) {
+                  Tooltip(
+                    message: 'Include previously saved training data when training.',
+                    child: Switch(
+                      value: _usePersistent,
+                      onChanged: (v) async {
+                        setState(() => _usePersistent = v);
+                        // Re-train with current selection
                         if (_selectedFilePath != null) {
-                          await _loadAndTrainMultiplePaths([
-                            _selectedFilePath!
-                          ]);
+                          await _loadAndTrainPath(_selectedFilePath!);
+                        } else if (_selectedWebFile != null && _selectedWebFile!.bytes != null) {
+                          await _loadAndTrainMultipleWeb([_selectedWebFile!]);
+                        } else if (_uploadedData.isNotEmpty) {
+                          await _retrainFromUploaded();
+                        } else if (v == true) {
+                          // No current upload, but toggle ON: try using saved-only
+                          await _retrainFromSavedOnly();
                         }
-                      }
-                    },
+                      },
+                    ),
                   ),
                   const SizedBox(width: 6),
                   Text('Use saved training data',
                       style: AppTheme.bodyTextStyle),
                 ],
               ),
+              Builder(builder: (context) {
+                  return FutureBuilder<List<PowerDataPoint>>(
+                    future: DataRepository.load(),
+                    builder: (context, snapshot) {
+                      final savedCount = snapshot.data?.length ?? 0;
+                      final currentCount = _uploadedData.length;
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Current: $currentCount', style: AppTheme.bodyTextStyle),
+                          const SizedBox(width: 8),
+                          Text('Saved training: $savedCount', style: AppTheme.bodyTextStyle),
+                          const SizedBox(width: 8),
+                          FutureBuilder<List<PowerDataPoint>>(
+                            future: DataRepository.loadForecast(),
+                            builder: (context, snapF) {
+                              final fcCount = snapF.data?.length ?? 0;
+                              return Text('Saved forecast: $fcCount', style: AppTheme.bodyTextStyle);
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          Text('Using: ${_usePersistent ? 'current + saved' : 'current only'}', style: AppTheme.bodyTextStyle),
+                          const SizedBox(width: 12),
+                          TextButton(
+                            onPressed: () async {
+                              await DataRepository.clearTraining();
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Cleared saved training data')),
+                                );
+                              }
+                              // Retrain with current selection after clearing
+                              if (_selectedFilePath != null) {
+                                await _loadAndTrainPath(_selectedFilePath!);
+                              } else if (_selectedWebFile != null && _selectedWebFile!.bytes != null) {
+                                await _loadAndTrainMultipleWeb([_selectedWebFile!]);
+                              }
+                            },
+                            child: const Text('Clear saved data'),
+                          ),
+                          if (_uploadedData.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            TextButton(
+                              onPressed: () async {
+                                try {
+                                  await DataRepository.mergeAndSave(_uploadedData);
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Saved current upload as training data')),
+                                    );
+                                  }
+                                  // Refresh status by rebuilding FutureBuilder (setState)
+                                  setState(() {});
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Failed to save: $e')),
+                                    );
+                                  }
+                                }
+                              },
+                              child: const Text('Save current to saved'),
+                            ),
+                          ],
+                        ],
+                      );
+                    },
+                  );
+                }),
               ElevatedButton(
                 onPressed: () async {
                   if (_data.isEmpty) {
@@ -708,12 +926,18 @@ class _HomePageState extends State<HomePage>
       );
     }
 
-    final all = [..._data, ..._forecast];
-    final minYData =
-        all.map((e) => e.consumption).reduce((a, b) => a < b ? a : b);
-    final maxY = all.map((e) => e.consumption).reduce((a, b) => a > b ? a : b);
-    final minT = _data.first.timestamp.millisecondsSinceEpoch.toDouble();
-    final maxT = all.last.timestamp.millisecondsSinceEpoch.toDouble();
+  final all = [..._data, ..._forecast];
+  final minYData =
+    all.map((e) => e.consumption).reduce((a, b) => a < b ? a : b);
+  final maxY = all.map((e) => e.consumption).reduce((a, b) => a > b ? a : b);
+  final minT = all
+    .map((e) => e.timestamp.millisecondsSinceEpoch)
+    .reduce((a, b) => a < b ? a : b)
+    .toDouble();
+  final maxT = all
+    .map((e) => e.timestamp.millisecondsSinceEpoch)
+    .reduce((a, b) => a > b ? a : b)
+    .toDouble();
     final spanHours = (maxT - minT) / (3600 * 1000);
     final showDays = spanHours >= 72; // if > 3 days, show days
     double toX(DateTime t) =>
@@ -760,7 +984,7 @@ class _HomePageState extends State<HomePage>
         _forecast.map((p) => FlSpot(toX(p.timestamp), p.consumption)).toList();
 
     final trendSpots = <FlSpot>[];
-    if (_model?.isTrained == true) {
+    if (_model?.isTrained == true && _data.isNotEmpty) {
       final firstTs = _data.first.timestamp;
       final lastTs = all.last.timestamp;
       final x0sec = 0.0;

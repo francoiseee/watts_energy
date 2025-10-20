@@ -157,6 +157,60 @@ class MLService {
     }
     return results;
   }
+
+  // ---- Backtesting utilities ----
+  static ({double mae, double mape, double rmse, int n})? backtest(
+    List<PowerDataPoint> data,
+    Duration step, {
+    int holdoutDays = 30,
+  }) {
+    if (data.length < 10) return null;
+    final sorted = [...data]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final holdoutDuration = Duration(days: holdoutDays);
+    final last = sorted.last.timestamp;
+    final cutoff = last.subtract(holdoutDuration);
+    final trainSet = sorted.where((p) => p.timestamp.isBefore(cutoff)).toList();
+    final holdoutSet = sorted.where((p) => !p.timestamp.isBefore(cutoff)).toList();
+    if (trainSet.length < 5 || holdoutSet.length < 2) return null;
+
+    final trained = MLService.train(trainSet);
+    final model = trained.model;
+
+    // Determine holdout steps count at chosen step
+    final steps = step.inSeconds > 0
+        ? (holdoutDuration.inSeconds ~/ step.inSeconds)
+        : 0;
+    final clampedSteps = steps.clamp(1, 365 * 24 * 5);
+
+    // Forecast over holdout window starting right after last train point
+  final preds = forecastSeasonal(model, trainSet, clampedSteps, step);
+
+    // Aggregate holdout actuals into step bins matching forecast timestamps
+    final aggActuals = _aggregateToSteps(
+      holdoutSet,
+      start: trainSet.last.timestamp,
+      step: step,
+      count: preds.length,
+    );
+
+    final n = preds.length.clamp(0, aggActuals.length);
+    if (n <= 0) return null;
+    double se = 0.0, ae = 0.0, pe = 0.0;
+    for (int i = 0; i < n; i++) {
+      final yhat = preds[i].consumption;
+      final y = aggActuals[i];
+      final err = (yhat - y);
+      se += err * err;
+      ae += err.abs();
+      if (y.abs() > 1e-9) {
+        pe += (err.abs() / y.abs());
+      }
+    }
+    final mae = ae / n;
+    final rmse = (se / n).sqrtSafe();
+    final mape = n > 0 ? (pe / n) : double.nan;
+    return (mae: mae, mape: mape, rmse: rmse, n: n);
+  }
 }
 
 // Helpers for robustness
@@ -225,6 +279,43 @@ LinearRegressionModel _robustFit(List<double> xs, List<double> ys) {
   } else {
     model.fit(xs, ys);
     return model;
+  }
+}
+
+// Average values in each (prev, curr] step interval
+List<double> _aggregateToSteps(
+  List<PowerDataPoint> data, {
+  required DateTime start,
+  required Duration step,
+  required int count,
+}) {
+  final out = <double>[];
+  DateTime prev = start;
+  for (int i = 1; i <= count; i++) {
+    final curr = start.add(step * i);
+    final window = data.where((p) => p.timestamp.isAfter(prev) && !p.timestamp.isAfter(curr)).toList();
+    if (window.isEmpty) {
+      // Fallback to last known value or 0
+      out.add(out.isNotEmpty ? out.last : (data.isNotEmpty ? data.first.consumption : 0.0));
+    } else {
+      final mean = window.map((e) => e.consumption).reduce((a, b) => a + b) / window.length;
+      out.add(mean);
+    }
+    prev = curr;
+  }
+  return out;
+}
+
+extension _SqrtSafe on double {
+  double sqrtSafe() => this <= 0 ? 0.0 : (this).toDouble().sqrtApprox();
+  double sqrtApprox() {
+    // Fast sqrt approximation fallback; not critical to be exact here
+    double x = this;
+    double r = x;
+    for (int i = 0; i < 8; i++) {
+      r = 0.5 * (r + x / r);
+    }
+    return r;
   }
 }
 
